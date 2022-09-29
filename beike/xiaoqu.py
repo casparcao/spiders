@@ -2,7 +2,7 @@ import requests
 import re
 from concurrent.futures import ThreadPoolExecutor
 import threading
-import headers as hd
+from lib import headers as hd
 from pymongo import MongoClient
 
 
@@ -117,5 +117,5 @@ def save(info_list):
 
 if __name__ == '__main__':
     with ThreadPoolExecutor(max_workers=16) as pool:
-        for p in range(16):
+        for p in range(50):
             pool.submit(crawls, p)
