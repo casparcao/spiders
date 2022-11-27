@@ -88,12 +88,12 @@ def extract0(games, daily_part, count):
             "home": {
                 "name": home,
                 "icon": home_icon,
-                "score": int(result[0]) if "已完赛" == status else 0
+                "score": int(result[0]) if len(result) > 2 else 0
             },
             "guest": {
                 "name": guest,
                 "icon": guest_icon,
-                "score": int(result[2:]) if "已完赛" == status else 0
+                "score": int(result[2:]) if len(result) > 2 else 0
             },
             "result": result,
             "status": status,
@@ -111,7 +111,19 @@ def save(info_list):
     """
     print(info_list)
     if info_list:
-        collection.insert_many(info_list)
+        for info in info_list:
+            doc = collection.find_one({"title": info["title"]})
+            if doc:
+                collection.update_one({"_id": doc["_id"]}, {
+                    "$set": {
+                        "home": info["home"],
+                        "guest": info["guest"],
+                        "status": info["status"],
+                        "result": info["result"]
+                    }
+                })
+            else:
+                collection.insert_one(info)
 
 
 if __name__ == '__main__':
