@@ -7,7 +7,7 @@ from datetime import datetime
 
 # 赛程页面的url
 schedule_url_template = "https://www.jianlizhi.com/#scb"
-mongo_client = MongoClient()
+mongo_client = MongoClient("mongodb://wager:wager@203.196.8.218:3717")
 db = mongo_client.wager
 collection = db.game
 
@@ -64,6 +64,7 @@ def extract0(games, daily_part, count):
     for game_part in game_parts:
         time = game_part.xpath('div[@class="time"]/span[@class="word_cup_time"]/text()')
         title = game_part.xpath('div[@class="time"]/span[@class="word_cup_leixing1"]/a/text()')
+        title2 = game_part.xpath('div[@class="time"]/span[@class="word_cup_leixing1"]/text()')
         turns = game_part.xpath('div[@class="time"]/span[@class="word_cup_changci"]/text()')
         home = game_part.xpath('div[@class="qiudui"]/span[@class="word_cup_jiemu_left"]/a/text()')
         guest = game_part.xpath('div[@class="qiudui"]/span[@class="word_cup_jiemu_right"]/a/text()')
@@ -72,7 +73,7 @@ def extract0(games, daily_part, count):
         result = game_part.xpath('div[@class="qiudui"]/span[@class="word_cup_vs"]/text()')
         status = game_part.xpath('div[@class="zhibo"]/span[@class="word_cup_links"]/a/i/text()')
         time = time[0] if time else ""
-        title = title[0] if title else ""
+        title = title[0] if title else (title2[0] if title2 else "")
         turns = turns[0] if turns else ""
         home = home[0] if home else ""
         guest = guest[0] if guest else ""
