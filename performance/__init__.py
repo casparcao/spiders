@@ -122,53 +122,63 @@ def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=5000, t
 plot_trend_filtered(df_all, '平均响应时间', '各接口平均响应时间趋势（50-5000ms）', 'trend_avg_latency_filtered')
 plot_trend_filtered(df_all, 'TP95', '各接口TP95延迟趋势（50-5000ms）', 'trend_tp95_filtered')
 
+
 # ----------------------------
 # 5. 计算 TP95 变化（当前 vs 半年前）
 # ----------------------------
-df_earliest = df_all[df_all['日期'] == '2025-03-01'][['接口标识', 'TP95']].rename(columns={'TP95': 'TP95_半年前'})
-df_latest = df_all[df_all['日期'] == '2025-09-01'][['接口标识', 'TP95']].rename(columns={'TP95': 'TP95_当前'})
+def comparison2csv (df, column):
+    df_earliest = df[df['日期'] == '2025-03-01'][['接口标识', column]].rename(columns={column: column + '_半年前'})
+    df_latest = df[df['日期'] == '2025-09-01'][['接口标识', column]].rename(columns={column: column + '_当前'})
 
-df_compare = pd.merge(df_earliest, df_latest, on='接口标识')
-df_compare['TP95_变化'] = df_compare['TP95_当前'] - df_compare['TP95_半年前']
-df_compare['TP95_变化率'] = (df_compare['TP95_变化'] / df_compare['TP95_半年前']) * 100
-df_compare = df_compare.sort_values('TP95_变化', ascending=False).round(2)
+    df_compare = pd.merge(df_earliest, df_latest, on='接口标识')
+    df_compare[column + '_变化'] = df_compare[column + '_当前'] - df_compare[column + '_半年前']
+    df_compare[column + '_变化率'] = (df_compare[column + '_变化'] / df_compare[column + '_半年前']) * 100
+    df_compare = df_compare.sort_values(column + '_变化', ascending=False).round(2)
 
-# 保存完整对比
-df_compare.to_csv(f"{output_dir}/tp95_change_comparison.csv", index=False)
+    # 保存完整对比
+    df_compare.to_csv(f"{output_dir}/change_comparison_{column}.csv", index=False)
 
-# ----------------------------
-# 6. Top 10 退步 & 优化接口
-# ----------------------------
-top_deteriorate = df_compare.head(10)
-top_improve = df_compare.tail(10).sort_values('TP95_变化').round(2)
+    # ----------------------------
+    # 6. Top 10 退步 & 优化接口
+    # ----------------------------
+    top_deteriorate = df_compare.head(10)
+    top_improve = df_compare.tail(10).sort_values(column + '_变化').round(2)
 
-top_deteriorate.to_csv(f"{output_dir}/top10_deteriorated.csv", index=False)
-top_improve.to_csv(f"{output_dir}/top10_improved.csv", index=False)
-
-# 使用 pivot_table 替代 pivot，避免重复索引问题
-heatmap_data = df_all.pivot_table(
-    index='接口标识',
-    columns='时间标签',
-    values='TP95',
-    aggfunc='mean'
-)
-
-# 可选：只显示部分接口（避免太长）
-top_20 = df_all[df_all['时间标签'] == '当前'].nlargest(20, 'TP95')['接口标识']
-heatmap_data = heatmap_data.loc[heatmap_data.index.isin(top_20)]
-
-# 绘图时，只显示路径部分
-heatmap_data.index = [idx.split(' ', 1)[1] for idx in heatmap_data.index]
-
-plt.figure(figsize=(8, 10))
-sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlOrRd", cbar_kws={'label': 'TP95 (ms)'})
-plt.title("Top 20 接口TP95热力图")
-plt.ylabel("接口路径")
-plt.xlabel("时间点")
-plt.savefig(f"{output_dir}/heatmap_tp95_top20.png", dpi=150, bbox_inches='tight')
-plt.close()
+    top_deteriorate.to_csv(f"{output_dir}/top10_deteriorated_{column}.csv", index=False)
+    top_improve.to_csv(f"{output_dir}/top10_improved_{column}.csv", index=False)
+    return df_compare, top_deteriorate, top_improve
 
 
+df_compare_p95, top_deteriorate_p95, top_improve_p95 = comparison2csv(df_all, 'TP95')
+df_compare_avg, top_deteriorate_avg, top_improve_avg = comparison2csv(df_all, '平均响应时间')
+
+
+def heatmap(df, column):
+    # 使用 pivot_table 替代 pivot，避免重复索引问题
+    heatmap_data = df.pivot_table(
+        index='接口标识',
+        columns='时间标签',
+        values=column,
+        aggfunc='mean'
+    )
+    # 可选：只显示部分接口（避免太长）
+    top_20 = df[df['时间标签'] == '当前'].nlargest(20, column)['接口标识']
+    heatmap_data = heatmap_data.loc[heatmap_data.index.isin(top_20)]
+
+    # 绘图时，只显示路径部分
+    heatmap_data.index = [idx.split(' ', 1)[1] for idx in heatmap_data.index]
+
+    plt.figure(figsize=(8, 10))
+    sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlOrRd", cbar_kws={'label': 'TP95 (ms)'})
+    plt.title("Top 20 接口热力图" + column)
+    plt.ylabel("接口路径")
+    plt.xlabel("时间点")
+    plt.savefig(f"{output_dir}/heatmap_top20_{column}.png", dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+heatmap(df_all, 'TP95')
+heatmap(df_all, '平均响应时间')
 
 # ----------------------------
 # 8. 生成分析报告
@@ -181,13 +191,20 @@ report = f"""
 
 📊 总体情况:
 - 共分析接口数: {df_all['接口标识'].nunique()}
-- 完整趋势数据接口数: {len(df_compare)}
+- 完整趋势数据接口数TP95: {len(df_compare_p95)}
+- 完整趋势数据接口数Avg: {len(df_compare_avg)}
 
 🔝 Top 5 性能退步最严重接口（TP95增加最多）:
-{top_deteriorate.head(5)[['接口标识', 'TP95_半年前', 'TP95_当前', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
+{top_deteriorate_p95.head(5)[['接口标识', 'TP95_半年前', 'TP95_当前', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
 
 ✅ Top 5 性能优化最明显接口（TP95下降最多）:
-{top_improve.head(5)[['接口标识', 'TP95_半年前', 'TP95_当前', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
+{top_improve_p95.head(5)[['接口标识', 'TP95_半年前', 'TP95_当前', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
+
+🔝 Top 5 性能退步最严重接口（Avg增加最多）:
+{top_deteriorate_avg.head(5)[['接口标识', '平均响应时间_半年前', '平均响应时间_当前', '平均响应时间_变化', '平均响应时间_变化率']].to_string(index=False)}
+
+✅ Top 5 性能优化最明显接口（Avg下降最多）:
+{top_improve_avg.head(5)[['接口标识', '平均响应时间_半年前', '平均响应时间_当前', '平均响应时间_变化', '平均响应时间_变化率']].to_string(index=False)}
 """
 
 with open(f"{output_dir}/analysis_report.txt", "w", encoding="utf-8") as f:
@@ -244,16 +261,24 @@ subtitle.text = f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 # ✅ 使用你实际生成的文件名
 add_slide(prs, "各接口平均响应时间趋势（50-5000ms）", image_path=f"{output_dir}/trend_avg_latency_filtered.png")
 add_slide(prs, "各接口TP95延迟趋势（50-5000ms）", image_path=f"{output_dir}/trend_tp95_filtered.png")
-add_slide(prs, "接口TP95热力图", image_path=f"{output_dir}/heatmap_tp95_top20.png")
+
+add_slide(prs, "接口TP95热力图", image_path=f"{output_dir}/heatmap_top20_TP95.png")
+add_slide(prs, "接口AVG热力图", image_path=f"{output_dir}/heatmap_top20_平均响应时间.png")
 
 # 添加 Top 10 退步接口
-top_deteriorate_data = [["接口标识", "TP95_半年前", "TP95_当前", "TP95_变化",
-                         "TP95_变化率"]] + top_deteriorate.values.tolist()
-add_slide(prs, "Top 10 性能退步接口", table_data=top_deteriorate_data)
-
+top_deteriorate_p95_data = [["接口标识", "TP95_半年前", "TP95_当前", "TP95_变化",
+                         "TP95_变化率"]] + top_deteriorate_p95.values.tolist()
+add_slide(prs, "Top 10 TP95性能退步接口", table_data=top_deteriorate_p95_data)
 # 添加 Top 10 优化接口
-top_improve_data = [["接口标识", "TP95_半年前", "TP95_当前", "TP95_变化", "TP95_变化率"]] + top_improve.values.tolist()
-add_slide(prs, "Top 10 性能优化接口", table_data=top_improve_data)
+top_improve_p95_data = [["接口标识", "TP95_半年前", "TP95_当前", "TP95_变化", "TP95_变化率"]] + top_improve_p95.values.tolist()
+add_slide(prs, "Top 10 TP95性能优化接口", table_data=top_improve_p95_data)
+
+top_deteriorate_avg_data = [["接口标识", "平均响应时间_半年前", "平均响应时间_当前", "平均响应时间_变化",
+                             "平均响应时间_变化率"]] + top_deteriorate_avg.values.tolist()
+add_slide(prs, "Top 10 AVG性能退步接口", table_data=top_deteriorate_avg_data)
+# 添加 Top 10 优化接口
+top_improve_avg_data = [["接口标识", "平均响应时间_半年前", "平均响应时间_当前", "平均响应时间_变化", "平均响应时间_变化率"]] + top_improve_avg.values.tolist()
+add_slide(prs, "Top 10 AVG性能优化接口", table_data=top_improve_avg_data)
 
 # 保存 PPT
 ppt_output_path = f"{output_dir}/performance_analysis_report.pptx"
