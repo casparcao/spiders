@@ -180,6 +180,77 @@ def heatmap(df, column):
 heatmap(df_all, 'TP95')
 heatmap(df_all, '平均响应时间')
 
+
+def plot_boxplot(df, metric, title, filename, output_dir='.'):
+    """
+    绘制箱线图。
+    """
+    # 设置输出目录
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # 使用Seaborn绘制箱线图
+    plt.figure(figsize=(16, 9))
+    sns.boxplot(x='接口标识', y=metric, data=df)
+    plt.title(title)
+    plt.xticks(rotation=45, ha='right')  # 调整x轴标签以避免重叠
+    plt.tight_layout()
+
+    # 保存图像
+    plt.savefig(f"{output_dir}/{filename}.png", bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+def filter_data_for_boxplot(df, metric, min_requests=100):
+    """
+    过滤数据用于绘制箱线图。
+    移除异常值，并根据最小请求量筛选接口。
+    """
+    # 使用IQR移除异常值
+    # Q1 = df[metric].quantile(0.25)
+    # Q3 = df[metric].quantile(0.75)
+    # IQR = Q3 - Q1
+    # df_filtered = df[~((df[metric] < (Q1 - 1.5 * IQR)) | (df[metric] > (Q3 + 1.5 * IQR)))]
+    # 按接口请求量筛选
+    return df[df['请求次数'] >= min_requests]
+
+
+# 示例调用
+# 示例调用
+df_filtered_p95_for_boxplot = filter_data_for_boxplot(df_all, 'TP95', 5000)
+plot_boxplot(df_filtered_p95_for_boxplot, 'TP95', '各接口TP95延迟分布', 'boxplot_tp95', output_dir=output_dir)
+df_filtered_avg_for_boxplot = filter_data_for_boxplot(df_all, '平均响应时间', 5000)
+plot_boxplot(df_filtered_avg_for_boxplot, '平均响应时间', '各接口AVG延迟分布', 'boxplot_avg', output_dir=output_dir)
+
+
+def plot_scatterplot(df, x_metric, y_metric, title, filename, output_dir='.'):
+    """
+    绘制散点图。
+    """
+    # 设置输出目录
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # 创建散点图
+    plt.figure(figsize=(16, 9))
+    plt.scatter(df[x_metric], df[y_metric], alpha=0.5)
+    plt.title(title)
+    plt.xlabel(x_metric)
+    plt.ylabel(y_metric)
+    # 可选：添加趋势线
+    from scipy.stats import linregress
+    slope, intercept, r_value, p_value, std_err = linregress(df[x_metric], df[y_metric])
+    plt.plot(df[x_metric], intercept + slope * df[x_metric], color='red')  # 添加回归线
+    plt.tight_layout()
+    # 保存图像
+    plt.savefig(f"{output_dir}/{filename}.png", bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+# 示例调用
+plot_scatterplot(df_all, '请求次数', '平均响应时间', '请求次数与平均响应时间关系', 'scatterplot_requests_avg_latency', output_dir=output_dir)
+
+
 # ----------------------------
 # 8. 生成分析报告
 # ----------------------------
