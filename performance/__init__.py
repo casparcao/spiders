@@ -14,9 +14,10 @@ plt.rcParams['axes.unicode_minus'] = False  # 解决负号 '-' 显示为方块�
 # 1. 配置文件与时间点
 # ----------------------------
 file_config = [
-    {'date': '2025-03-01', 'file': 'first.xlsx', 'name': '半年前'},
-    {'date': '2025-06-01', 'file': 'second.xlsx', 'name': '三个月前'},
-    {'date': '2025-09-01', 'file': 'third.xlsx', 'name': '当前'},
+    # {'date': '2025-05-26', 'file': 'zero.xlsx', 'name': 'V8004'},
+    {'date': '2025-08-11', 'file': 'first.xlsx', 'name': 'V8101'},
+    {'date': '2025-08-20', 'file': 'second.xlsx', 'name': 'V8102'},
+    {'date': '2025-09-05', 'file': 'third.xlsx', 'name': 'V8104'},
 ]
 
 output_dir = "interface_performance_analysis"
@@ -31,12 +32,15 @@ dfs = []
 for config in file_config:
     df = pd.read_excel(config['file'], sheet_name=0)
     df = df[df['模块'] == df['模块']]  # 过滤无效行
+    # 保留 '模块' 列的值 **不在** 给定列表中的行
+    df = df[~df['模块'].isin(['iapps', 'ipaas', 'ipaascatalog', 'ipluto', 'icluster', 'idevops', 'iearth', 'imesh', 'icloudhub', 'iops'])]
+    df = df[df['次数'] > 200]
 
     # 重命名并保留 '请求方式'
     df = df.rename(columns={
         '请求路径': '请求路径',
         '次数': '请求次数',
-        '平均值': '平均响应时间',
+        '平均值': 'AVG',
         '50分位': 'TP50',
         '95分位': 'TP95'
     })
@@ -47,7 +51,7 @@ for config in file_config:
     df['日期'] = pd.to_datetime(config['date'])
     df['时间标签'] = config['name']
 
-    df = df[['接口标识', '请求方式', '请求路径', '请求次数', '平均响应时间', 'TP50', 'TP95', '日期', '时间标签']]
+    df = df[['接口标识', '请求方式', '请求路径', '请求次数', 'AVG', 'TP50', 'TP95', '日期', '时间标签']]
     dfs.append(df)
 # ----------------------------
 # 3. 合并所有数据
@@ -62,14 +66,14 @@ print("📅 时间跨度：2025-03-01 至 2025-09-01")
 # ----------------------------
 # 4. 生成趋势图（关键指标）
 # ----------------------------
-def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=5000, top_n=20):
+def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=10000, top_n=50):
     """
     绘制过滤后的趋势图
     - min_val, max_val: 过滤 metric 的范围
     - top_n: 最多显示前 N 个接口
     """
-    # 获取每个接口在“当前”时间点的 metric 值
-    latest = df[df['时间标签'] == '当前'][['接口标识', metric]].set_index('接口标识')[metric]
+    # 获取每个接口在“V8104”时间点的 metric 值
+    latest = df[df['时间标签'] == 'V8104'][['接口标识', metric]].set_index('接口标识')[metric]
 
     # 筛选出 metric 在合理区间的接口
     valid_interfaces = latest[(latest >= min_val) & (latest <= max_val)].index
@@ -81,8 +85,8 @@ def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=5000, t
     full_paths = path_counts[path_counts == 3].index
     df_filtered = df_filtered[df_filtered['接口标识'].isin(full_paths)]
 
-    # 按当前 metric 值排序，取 top_n
-    top_interfaces = df_filtered[df_filtered['时间标签'] == '当前'] \
+    # 按V8104 metric 值排序，取 top_n
+    top_interfaces = df_filtered[df_filtered['时间标签'] == 'V8104'] \
         .set_index('接口标识')[metric] \
         .sort_values(ascending=False) \
         .head(top_n).index
@@ -90,19 +94,23 @@ def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=5000, t
     df_plot = df_filtered[df_filtered['接口标识'].isin(top_interfaces)]
 
     # 开始绘图
-    plt.figure(figsize=(14, 6), constrained_layout=True)
+    plt.figure(figsize=(30, 15), constrained_layout=True)
 
     # 在 plot_trend_filtered 内部，判断是否为“退步”
     df_compare1 = df_all.pivot(index='接口标识', columns='时间标签', values='TP95')
-    df_compare1['变化'] = df_compare1['当前'] - df_compare1['半年前']
-    regressed = df_compare1[df_compare1['变化'] > 1000].index  # 退步超过1秒
+    df_compare1['变化'] = df_compare1['V8104'] - df_compare1['V8101']
+    regressed = df_compare1[df_compare1['变化'] > 500].index  # 退步超过1秒
 
     # 绘图时：
     for interface in df_plot['接口标识'].unique():
         data = df_plot[df_plot['接口标识'] == interface]
-        label = interface.split(' ', 1)[1]
+        label = interface
         color = 'red' if interface in regressed else 'blue'
         ls = '-' if interface in regressed else '--'
+        # print(data[['接口标识', '时间标签', '日期', metric]])
+        # print(color)
+        # print(ls)
+        # print("=======================")
         plt.plot(data['日期'], data[metric], marker='o', label=label, color=color, linestyle=ls)
 
     plt.title(title, fontsize=14)
@@ -111,7 +119,7 @@ def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=5000, t
     plt.xticks(rotation=45, ha='right')
 
     # 图例放在右侧
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='best', fontsize='small')
 
     # 保存时确保完整
     plt.savefig(f"{output_dir}/{filename}.png", dpi=150, bbox_inches='tight', pad_inches=0.5)
@@ -119,20 +127,20 @@ def plot_trend_filtered(df, metric, title, filename, min_val=50, max_val=5000, t
 
 
 # 调用示例
-plot_trend_filtered(df_all, '平均响应时间', '各接口平均响应时间趋势（50-5000ms）', 'trend_avg_latency_filtered')
+plot_trend_filtered(df_all, 'AVG', '各接口AVG趋势（50-5000ms）', 'trend_avg_latency_filtered')
 plot_trend_filtered(df_all, 'TP95', '各接口TP95延迟趋势（50-5000ms）', 'trend_tp95_filtered')
 
 
 # ----------------------------
-# 5. 计算 TP95 变化（当前 vs 半年前）
+# 5. 计算 TP95 变化（V8104 vs V8101）
 # ----------------------------
 def comparison2csv (df, column):
-    df_earliest = df[df['日期'] == '2025-03-01'][['接口标识', column]].rename(columns={column: column + '_半年前'})
-    df_latest = df[df['日期'] == '2025-09-01'][['接口标识', column]].rename(columns={column: column + '_当前'})
+    df_earliest = df[df['日期'] == '2025-08-11'][['接口标识', column]].rename(columns={column: column + '_V8101'})
+    df_latest = df[df['日期'] == '2025-09-05'][['接口标识', column]].rename(columns={column: column + '_V8104'})
 
     df_compare = pd.merge(df_earliest, df_latest, on='接口标识')
-    df_compare[column + '_变化'] = df_compare[column + '_当前'] - df_compare[column + '_半年前']
-    df_compare[column + '_变化率'] = (df_compare[column + '_变化'] / df_compare[column + '_半年前']) * 100
+    df_compare[column + '_变化'] = df_compare[column + '_V8104'] - df_compare[column + '_V8101']
+    df_compare[column + '_变化率'] = (df_compare[column + '_变化'] / df_compare[column + '_V8101']) * 100
     df_compare = df_compare.sort_values(column + '_变化', ascending=False).round(2)
 
     # 保存完整对比
@@ -150,7 +158,7 @@ def comparison2csv (df, column):
 
 
 df_compare_p95, top_deteriorate_p95, top_improve_p95 = comparison2csv(df_all, 'TP95')
-df_compare_avg, top_deteriorate_avg, top_improve_avg = comparison2csv(df_all, '平均响应时间')
+df_compare_avg, top_deteriorate_avg, top_improve_avg = comparison2csv(df_all, 'AVG')
 
 
 def heatmap(df, column):
@@ -162,7 +170,7 @@ def heatmap(df, column):
         aggfunc='mean'
     )
     # 可选：只显示部分接口（避免太长）
-    top_20 = df[df['时间标签'] == '当前'].nlargest(20, column)['接口标识']
+    top_20 = df[df['时间标签'] == 'V8104'].nlargest(20, column)['接口标识']
     heatmap_data = heatmap_data.loc[heatmap_data.index.isin(top_20)]
 
     # 绘图时，只显示路径部分
@@ -178,7 +186,7 @@ def heatmap(df, column):
 
 
 heatmap(df_all, 'TP95')
-heatmap(df_all, '平均响应时间')
+heatmap(df_all, 'AVG')
 
 
 def plot_boxplot(df, metric, title, filename, output_dir='.'):
@@ -219,8 +227,8 @@ def filter_data_for_boxplot(df, metric, min_requests=100):
 # 示例调用
 df_filtered_p95_for_boxplot = filter_data_for_boxplot(df_all, 'TP95', 5000)
 plot_boxplot(df_filtered_p95_for_boxplot, 'TP95', '各接口TP95延迟分布', 'boxplot_tp95', output_dir=output_dir)
-df_filtered_avg_for_boxplot = filter_data_for_boxplot(df_all, '平均响应时间', 5000)
-plot_boxplot(df_filtered_avg_for_boxplot, '平均响应时间', '各接口AVG延迟分布', 'boxplot_avg', output_dir=output_dir)
+df_filtered_avg_for_boxplot = filter_data_for_boxplot(df_all, 'AVG', 5000)
+plot_boxplot(df_filtered_avg_for_boxplot, 'AVG', '各接口AVG延迟分布', 'boxplot_avg', output_dir=output_dir)
 
 
 def plot_scatterplot(df, x_metric, y_metric, title, filename, output_dir='.'):
@@ -248,7 +256,7 @@ def plot_scatterplot(df, x_metric, y_metric, title, filename, output_dir='.'):
 
 
 # 示例调用
-plot_scatterplot(df_all, '请求次数', '平均响应时间', '请求次数与平均响应时间关系', 'scatterplot_requests_avg_latency', output_dir=output_dir)
+plot_scatterplot(df_all, '请求次数', 'AVG', '请求次数与AVG关系', 'scatterplot_requests_avg_latency', output_dir=output_dir)
 
 
 # ----------------------------
@@ -258,7 +266,7 @@ report = f"""
 📈 接口性能趋势分析报告
 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 数据来源: first.xlsx, second.xlsx, third.xlsx
-时间跨度: 半年前 → 三个月前 → 当前
+时间跨度: V8101 → 三个月前 → V8104
 
 📊 总体情况:
 - 共分析接口数: {df_all['接口标识'].nunique()}
@@ -266,16 +274,16 @@ report = f"""
 - 完整趋势数据接口数Avg: {len(df_compare_avg)}
 
 🔝 Top 5 性能退步最严重接口（TP95增加最多）:
-{top_deteriorate_p95.head(5)[['接口标识', 'TP95_半年前', 'TP95_当前', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
+{top_deteriorate_p95.head(5)[['接口标识', 'TP95_V8101', 'TP95_V8104', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
 
 ✅ Top 5 性能优化最明显接口（TP95下降最多）:
-{top_improve_p95.head(5)[['接口标识', 'TP95_半年前', 'TP95_当前', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
+{top_improve_p95.head(5)[['接口标识', 'TP95_V8101', 'TP95_V8104', 'TP95_变化', 'TP95_变化率']].to_string(index=False)}
 
 🔝 Top 5 性能退步最严重接口（Avg增加最多）:
-{top_deteriorate_avg.head(5)[['接口标识', '平均响应时间_半年前', '平均响应时间_当前', '平均响应时间_变化', '平均响应时间_变化率']].to_string(index=False)}
+{top_deteriorate_avg.head(5)[['接口标识', 'AVG_V8101', 'AVG_V8104', 'AVG_变化', 'AVG_变化率']].to_string(index=False)}
 
 ✅ Top 5 性能优化最明显接口（Avg下降最多）:
-{top_improve_avg.head(5)[['接口标识', '平均响应时间_半年前', '平均响应时间_当前', '平均响应时间_变化', '平均响应时间_变化率']].to_string(index=False)}
+{top_improve_avg.head(5)[['接口标识', 'AVG_V8101', 'AVG_V8104', 'AVG_变化', 'AVG_变化率']].to_string(index=False)}
 """
 
 with open(f"{output_dir}/analysis_report.txt", "w", encoding="utf-8") as f:
@@ -330,25 +338,28 @@ subtitle.text = f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
 # 添加趋势图
 # ✅ 使用你实际生成的文件名
-add_slide(prs, "各接口平均响应时间趋势（50-5000ms）", image_path=f"{output_dir}/trend_avg_latency_filtered.png")
+add_slide(prs, "各接口AVG趋势（50-5000ms）", image_path=f"{output_dir}/trend_avg_latency_filtered.png")
 add_slide(prs, "各接口TP95延迟趋势（50-5000ms）", image_path=f"{output_dir}/trend_tp95_filtered.png")
 
 add_slide(prs, "接口TP95热力图", image_path=f"{output_dir}/heatmap_top20_TP95.png")
-add_slide(prs, "接口AVG热力图", image_path=f"{output_dir}/heatmap_top20_平均响应时间.png")
+add_slide(prs, "接口AVG热力图", image_path=f"{output_dir}/heatmap_top20_AVG.png")
+
+add_slide(prs, "接口TP95箱线图", image_path=f"{output_dir}/boxplot_tp95.png")
+add_slide(prs, "接口AVG箱线图", image_path=f"{output_dir}/boxplot_avg.png")
 
 # 添加 Top 10 退步接口
-top_deteriorate_p95_data = [["接口标识", "TP95_半年前", "TP95_当前", "TP95_变化",
+top_deteriorate_p95_data = [["接口标识", "TP95_V8101", "TP95_V8104", "TP95_变化",
                          "TP95_变化率"]] + top_deteriorate_p95.values.tolist()
 add_slide(prs, "Top 10 TP95性能退步接口", table_data=top_deteriorate_p95_data)
 # 添加 Top 10 优化接口
-top_improve_p95_data = [["接口标识", "TP95_半年前", "TP95_当前", "TP95_变化", "TP95_变化率"]] + top_improve_p95.values.tolist()
+top_improve_p95_data = [["接口标识", "TP95_V8101", "TP95_V8104", "TP95_变化", "TP95_变化率"]] + top_improve_p95.values.tolist()
 add_slide(prs, "Top 10 TP95性能优化接口", table_data=top_improve_p95_data)
 
-top_deteriorate_avg_data = [["接口标识", "平均响应时间_半年前", "平均响应时间_当前", "平均响应时间_变化",
-                             "平均响应时间_变化率"]] + top_deteriorate_avg.values.tolist()
+top_deteriorate_avg_data = [["接口标识", "AVG_V8101", "AVG_V8104", "AVG_变化",
+                             "AVG_变化率"]] + top_deteriorate_avg.values.tolist()
 add_slide(prs, "Top 10 AVG性能退步接口", table_data=top_deteriorate_avg_data)
 # 添加 Top 10 优化接口
-top_improve_avg_data = [["接口标识", "平均响应时间_半年前", "平均响应时间_当前", "平均响应时间_变化", "平均响应时间_变化率"]] + top_improve_avg.values.tolist()
+top_improve_avg_data = [["接口标识", "AVG_V8101", "AVG_V8104", "AVG_变化", "AVG_变化率"]] + top_improve_avg.values.tolist()
 add_slide(prs, "Top 10 AVG性能优化接口", table_data=top_improve_avg_data)
 
 # 保存 PPT
