@@ -1,6 +1,29 @@
 import pandas as pd
 import os
+import re
 from openpyxl.styles import Font
+
+
+def normalize_path_params(path):
+    """
+    将路径中的<xxx>或**等形式的参数占位符统一替换为{xxx}格式
+    
+    参数:
+    path: 原始路径字符串
+    
+    返回:
+    格式化后的路径字符串
+    """
+    if not isinstance(path, str):
+        return path
+    
+    # 将<xxx>形式替换为{xxx}
+    path = re.sub(r'<([^>]+)>', r'{\1}', path)
+    
+    # 将**形式替换为{id}（这里假设**代表一个ID参数）
+    path = re.sub(r'\*\*', r'{id}', path)
+    
+    return path
 
 
 def analyze_untested_apis(api_info_file, test_files, output_file):
@@ -26,6 +49,12 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
         print(f"读取API信息时发生错误：{e}")
         return
     
+    # 标准化API定义文件中的路径参数格式
+    if '请求路径' in api_info.columns:
+        api_info['原始请求路径'] = api_info['请求路径']  # 保存原始路径
+        api_info['请求路径'] = api_info['请求路径'].apply(normalize_path_params)
+        print("已完成API定义文件中的路径参数格式标准化")
+    
     # 读取已测试的接口
     tested_apis = pd.DataFrame()
     for test_file in test_files:
@@ -39,6 +68,12 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
             print(f"读取测试文件 {test_file} 时发生错误：{e}")
     
     print(f"总共读取到 {len(tested_apis)} 个已测试接口")
+    
+    # 标准化测试文件中的路径参数格式
+    if '请求路径' in tested_apis.columns:
+        tested_apis['原始请求路径'] = tested_apis['请求路径']  # 保存原始路径
+        tested_apis['请求路径'] = tested_apis['请求路径'].apply(normalize_path_params)
+        print("已完成测试文件中的路径参数格式标准化")
     
     # 确定用于比较的列
     api_path_column = None
