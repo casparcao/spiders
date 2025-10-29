@@ -51,7 +51,6 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
     
     # 标准化API定义文件中的路径参数格式
     if '请求路径' in api_info.columns:
-        api_info['原始请求路径'] = api_info['请求路径']  # 保存原始路径
         api_info['请求路径'] = api_info['请求路径'].apply(normalize_path_params)
         print("已完成API定义文件中的路径参数格式标准化")
     
@@ -71,7 +70,6 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
     
     # 标准化测试文件中的路径参数格式
     if '请求路径' in tested_apis.columns:
-        tested_apis['原始请求路径'] = tested_apis['请求路径']  # 保存原始路径
         tested_apis['请求路径'] = tested_apis['请求路径'].apply(normalize_path_params)
         print("已完成测试文件中的路径参数格式标准化")
     
