@@ -62,18 +62,18 @@ df_all.sort_values(['接口标识', '日期'], inplace=True)
 print("✅ 数据合并完成，共", len(df_all), "条接口性能记录")
 print("📅 时间跨度：2025-03-01 至 2025-09-01")
 
-df = pd.read_csv('api_logs.csv')  # 替换为实际路径
+# df = pd.read_csv('api_logs.csv')  # 替换为实际路径
 # 构建接口唯一标识
-df['接口标识'] = df['request_method'] + " " + df['url_template']
-df = df.rename(columns={
-        'url_template': '请求路径',
-        'request_method': '请求方式'
-})
-df = df[['请求方式', '请求路径', '接口标识']].drop_duplicates()
+# df['接口标识'] = df['request_method'] + " " + df['url_template']
+# df = df.rename(columns={
+#         'url_template': '请求路径',
+#         'request_method': '请求方式'
+# })
+# df = df[['请求方式', '请求路径', '接口标识']].drop_duplicates()
 
+# df_deduplicate = df_all[['请求方式', '请求路径', '接口标识']].drop_duplicates()
+# df_tmp = pd.concat([df_deduplicate, df], ignore_index=True)
 df_deduplicate = df_all[['请求方式', '请求路径', '接口标识']].drop_duplicates()
-df_tmp = pd.concat([df_deduplicate, df], ignore_index=True)
-df_deduplicate = df_tmp[['请求方式', '请求路径', '接口标识']].drop_duplicates()
 df_deduplicate.to_excel("deduplicate.xlsx", sheet_name="sheet", index=False)
 
 for index, df in enumerate(dfs):
