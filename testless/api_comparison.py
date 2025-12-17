@@ -1,7 +1,7 @@
 import pandas as pd
-import os
 import re
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 
 def normalize_path_params(path):
@@ -23,7 +23,29 @@ def normalize_path_params(path):
     # 将**形式替换为{id}（这里假设**代表一个ID参数）
     path = re.sub(r'\*\*', r'{id}', path)
     
+    # 将{xxxx}形式统一替换为{id}
+    path = re.sub(r'\{[^}]+\}', r'{id}', path)
+    
     return path
+
+
+def adjust_column_width(worksheet):
+    """
+    调整Excel工作表的列宽以适应内容
+    """
+    for column in worksheet.columns:
+        max_length = 0
+        column_letter = get_column_letter(column[0].column)
+        
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        
+        adjusted_width = min(max_length + 2, 50)  # 最大宽度限制为50
+        worksheet.column_dimensions[column_letter].width = adjusted_width
 
 
 def analyze_untested_apis(api_info_file, test_files, output_file):
@@ -40,6 +62,8 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
     print("正在读取所有API接口定义...")
     try:
         api_info = pd.read_excel(api_info_file)
+        # 将所有列内容转换为小写
+        api_info = api_info.apply(lambda x: x.astype(str).str.lower() if x.dtype == "object" else x)
         print(f"总共读取到 {len(api_info)} 个API接口")
         print(f"API信息列名: {list(api_info.columns)}")
     except FileNotFoundError:
@@ -59,6 +83,8 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
     for test_file in test_files:
         try:
             df = pd.read_excel(test_file)
+            # 将所有列内容转换为小写
+            df = df.apply(lambda x: x.astype(str).str.lower() if x.dtype == "object" else x)
             tested_apis = pd.concat([tested_apis, df], ignore_index=True)
             print(f"从 {test_file} 读取到 {len(df)} 个已测试接口")
         except FileNotFoundError:
@@ -106,6 +132,7 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
     if api_service_column and api_path_column and api_method_column:
         api_info['完整路径'] = '/' + api_info[api_service_column] + api_info[api_path_column]
         api_info['API标识'] = api_info[api_method_column] + ':' + api_info['完整路径']
+        print(api_info['API标识'][10])
         print("构建API定义文件的完整标识完成")
     
     # 对于测试文件，路径应该已经包含服务名称前缀
@@ -120,11 +147,17 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
     # 去重已测试的接口
     tested_apis_unique = tested_apis.drop_duplicates(subset=['API标识'])
     print(f"去重后共有 {len(tested_apis_unique)} 个唯一已测试接口")
-    
+
     # 找出未测试的接口
     print("正在查找未测试的接口...")
     untested_apis = api_info[~api_info['API标识'].isin(tested_apis_unique['API标识'])]
     print(f"发现 {len(untested_apis)} 个未测试的接口")
+    
+    # 输出前10个已测试的接口作为示例
+    print("--- 已测试的接口示例 ---")
+    for i, (_, row) in enumerate(tested_apis_unique.head(10).iterrows()):
+        print(f"{i+1}. {row['API标识']}")
+    print("------------------------")
     
     # 选择需要输出的列（去除我们添加的辅助列）
     output_columns = [col for col in api_info.columns if col not in ['完整路径', 'API标识']]
@@ -135,6 +168,10 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
         # 按服务分组并将每个服务写入单独的sheet
         if api_service_column:
             for service_name, group in untested_apis_output.groupby(api_service_column):
+                print(f"正在处理服务 '{service_name}' 的未测试接口...")
+                if group.empty:
+                    print(f"  -> 跳过空服务 '{service_name}'")
+                    continue  # 或者写入一个提示行（见下方备选）
                 # 将数据写入对应服务名称的sheet
                 sheet_name = str(service_name)[:31]  # Excel sheet名称限制为31个字符
                 group.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -144,16 +181,18 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
                 for row in worksheet.iter_rows():
                     for cell in row:
                         cell.font = Font(name='微软雅黑')
+                adjust_column_width(worksheet)
                 print(f"服务 '{service_name}' 的未测试接口已写入sheet '{sheet_name}'")
         
         # 写入汇总sheet
         untested_apis_output.to_excel(writer, sheet_name='全部未测试接口', index=False)
         
-        # 设置字体为微软雅黑
+        # 设置字体为微软雅黑并调整列宽
         worksheet = writer.sheets['全部未测试接口']
         for row in worksheet.iter_rows():
             for cell in row:
                 cell.font = Font(name='微软雅黑')
+        adjust_column_width(worksheet)
         print("所有未测试接口已写入sheet '全部未测试接口'")
     
     print(f"结果已保存到: {output_file}")
@@ -161,13 +200,13 @@ def analyze_untested_apis(api_info_file, test_files, output_file):
 
 if __name__ == "__main__":
     # 配置文件路径
-    api_info_file = "api_info.xlsx"  # 所有API接口定义文件
+    api_info_file = "前端js解析的接口跟swagger定义接口的交集.xlsx"  # 所有API接口定义文件
     test_files = [  # 测试过的接口文件
         "first.xlsx",
         "second.xlsx", 
         "third.xlsx"
     ]
-    output_file = "untested_apis.xlsx"  # 输出文件
+    output_file = "未测试接口汇总.xlsx"  # 输出文件
     
     # 运行分析
     analyze_untested_apis(api_info_file, test_files, output_file)

@@ -12,7 +12,7 @@ plt.rcParams['axes.unicode_minus'] = False
 sns.set_style("whitegrid")
 
 # 示例：加载数据（请替换为你的文件路径）
-df = pd.read_csv('api_logs.csv')  # 替换为实际路径
+df = pd.read_csv('perform_origin1216.csv')  # 替换为实际路径
 
 # 构建接口唯一标识
 df['api_signature'] = df['url_template'] + " [" + df['request_method'] + "]"
